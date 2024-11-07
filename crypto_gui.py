@@ -4,7 +4,9 @@ import tkinter as tk
 from tkinter import filedialog, messagebox
 import smtplib
 from email.mime.text import MIMEText
-import base64
+from email.mime.multipart import MIMEMultipart
+from email.mime.base import MIMEBase
+from email import encoders
 
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes, padding as sym_padding
@@ -15,7 +17,37 @@ from cryptography.x509.oid import NameOID
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import serialization
 
-# Функції збереження та завантаження ключів
+def generate_rsa_keys():
+    private_key = rsa.generate_private_key(
+        public_exponent=65537,
+        key_size=2048,
+        backend=default_backend()
+    )
+    public_key = private_key.public_key()
+    return private_key, public_key
+
+def create_self_signed_cert(private_key, public_key):
+    subject = issuer = x509.Name([
+        x509.NameAttribute(NameOID.COUNTRY_NAME, u"UA"),
+        x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, u"Lviv"),
+        x509.NameAttribute(NameOID.LOCALITY_NAME, u"Lviv"),
+        x509.NameAttribute(NameOID.ORGANIZATION_NAME, u"Thundem"),
+        x509.NameAttribute(NameOID.COMMON_NAME, u"thundem.com"),
+    ])
+    cert = x509.CertificateBuilder().subject_name(
+        subject
+    ).issuer_name(
+        issuer
+    ).public_key(
+        public_key
+    ).serial_number(
+        x509.random_serial_number()
+    ).not_valid_before(
+        datetime.datetime.utcnow()
+    ).not_valid_after(
+        datetime.datetime.utcnow() + datetime.timedelta(days=365)
+    ).sign(private_key, hashes.SHA256(), default_backend())
+    return cert
 
 # AES
 def save_aes_key(key, filename):
@@ -124,17 +156,34 @@ def decrypt_fernet(token, key):
     decrypted_message = f.decrypt(token)
     return decrypted_message.decode('utf-8')
 
-# Функція для надсилання електронних листів
-def send_email(encrypted_message, recipient_email):
-    sender_email = "vash_email@gmail.com"  # Замініть на вашу електронну адресу
+def send_email(file_path, recipient_email):
+    sender_email = "vovkandrij7@gmail.com"  # Замініть на вашу електронну адресу
     password = os.getenv('CRYPTO_GUI_PASSWORD')
 
-    encoded_message = base64.b64encode(encrypted_message).decode('utf-8')
-
-    msg = MIMEText(encoded_message)
+    msg = MIMEMultipart()
     msg['Subject'] = 'Зашифроване повідомлення'
     msg['From'] = sender_email
     msg['To'] = recipient_email
+
+    # Текст листа
+    body = "Дивіться вкладений файл із зашифрованим повідомленням."
+    msg.attach(MIMEText(body, 'plain'))
+
+    # Прикріплення файлу
+    try:
+        with open(file_path, 'rb') as attachment:
+            part = MIMEBase('application', 'octet-stream')
+            part.set_payload(attachment.read())
+
+        encoders.encode_base64(part)
+        part.add_header(
+            'Content-Disposition',
+            f'attachment; filename="{os.path.basename(file_path)}"'
+        )
+        msg.attach(part)
+    except Exception as e:
+        messagebox.showerror("Помилка", f"Не вдалося прикріпити файл: {e}")
+        return
 
     try:
         with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
@@ -157,7 +206,7 @@ def create_gui():
             # Генеруємо новий AES ключ
             symmetric_key = os.urandom(32)
             # Зберігаємо ключ у файл
-            key_save_path = filedialog.asksaveasfilename(title="Збережіть AES ключ", defaultextension=".key", filetypes=[("Key Files", "*.key"), ("All Files", "*.*")])
+            key_save_path = 'aes_key.key'
             if not key_save_path:
                 messagebox.showwarning("Попередження", "Ключ не було збережено")
                 return
@@ -166,14 +215,15 @@ def create_gui():
         elif algorithm == "RSA":
             # Генеруємо нову пару ключів RSA
             private_key, public_key = generate_rsa_keys()
+            cert = create_self_signed_cert(private_key, public_key)
             # Зберігаємо приватний та публічний ключі у файли
-            private_key_save_path = filedialog.asksaveasfilename(title="Збережіть RSA приватний ключ", defaultextension=".pem", filetypes=[("PEM Files", "*.pem"), ("All Files", "*.*")])
+            private_key_save_path = 'rsa_private_key.pem'
             if not private_key_save_path:
                 messagebox.showwarning("Попередження", "Приватний ключ не було збережено")
                 return
             save_rsa_private_key(private_key, private_key_save_path)
 
-            public_key_save_path = filedialog.asksaveasfilename(title="Збережіть RSA публічний ключ", defaultextension=".pem", filetypes=[("PEM Files", "*.pem"), ("All Files", "*.*")])
+            public_key_save_path = 'rsa_public_key.pem'
             if not public_key_save_path:
                 messagebox.showwarning("Попередження", "Публічний ключ не було збережено")
                 return
@@ -184,7 +234,7 @@ def create_gui():
             # Генеруємо новий Fernet ключ
             fernet_key = Fernet.generate_key()
             # Зберігаємо ключ у файл
-            key_save_path = filedialog.asksaveasfilename(title="Збережіть Fernet ключ", defaultextension=".key", filetypes=[("Key Files", "*.key"), ("All Files", "*.*")])
+            key_save_path = 'fernet_key.key'
             if not key_save_path:
                 messagebox.showwarning("Попередження", "Ключ не було збережено")
                 return
@@ -195,7 +245,7 @@ def create_gui():
             return
 
         # Збереження зашифрованого повідомлення у файл
-        save_path = filedialog.asksaveasfilename(defaultextension=".enc", filetypes=[("Encrypted files", "*.enc"), ("All files", "*.*")])
+        save_path = filedialog.asksaveasfilename(defaultextension=".txt", filetypes=[("Text  files", "*.txt"), ("All files", "*.*")])
         if save_path:
             try:
                 with open(save_path, 'wb') as f:
@@ -210,7 +260,7 @@ def create_gui():
         algorithm = algorithm_var.get()
 
         # Вибір файлу з зашифрованим повідомленням
-        open_path = filedialog.askopenfilename(filetypes=[("Encrypted files", "*.enc"), ("All files", "*.*")])
+        open_path = filedialog.askopenfilename(filetypes=[("Text files", "*.txt"), ("All files", "*.*")])
         if not open_path:
             messagebox.showwarning("Попередження", "Файл не було вибрано")
             return
@@ -257,15 +307,13 @@ def create_gui():
             messagebox.showwarning("Попередження", "Введіть електронну адресу отримувача")
             return
 
-        open_path = filedialog.askopenfilename(title="Виберіть файл із зашифрованим повідомленням", filetypes=[("Encrypted files", "*.enc"), ("All files", "*.*")])
+        open_path = filedialog.askopenfilename(title="Виберіть файл із зашифрованим повідомленням", filetypes=[("Text files", "*.txt"), ("All files", "*.*")])
         if not open_path:
             messagebox.showwarning("Попередження", "Файл не було вибрано")
             return
 
         try:
-            with open(open_path, 'rb') as f:
-                encrypted_message = f.read()
-            send_email(encrypted_message, recipient)
+            send_email(open_path, recipient)
         except Exception as e:
             messagebox.showerror("Помилка", f"Не вдалося відправити лист: {e}")
 
