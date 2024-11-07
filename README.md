@@ -9,8 +9,10 @@ Crypto GUI is a Python-based graphical application that allows users to encrypt 
 - **Encryption Algorithms**: Supports AES, RSA, and Fernet encryption methods.
 - **GUI Interface**: Easy-to-use graphical interface for encrypting, decrypting, and sending messages.
 - **Email Integration**: Ability to send encrypted messages via email.
+- **Key Management**: Ability to save and load encryption keys for AES, RSA, and Fernet.
 - **Placeholder Inputs**: User-friendly input fields with placeholders.
 - **Customizable UI**: Simple customization of interface colors and layouts.
+- **Receiver GUI**: A separate GUI for recipients to easily decrypt received messages.
 
 ## Requirements
 
@@ -136,6 +138,15 @@ with smtplib.SMTP_SSL('smtp.yourprovider.com', port_number) as server:
    - Click the "Send Message" button.
    - Select the encrypted file you wish to send.
    - The application will send the email to the recipient.
+
+5. **Receiver GUI**:
+
+   - The recipient can use the `receiver_gui.py` to decrypt messages. 
+   - They will need to select the encrypted file and the appropriate key used for decryption (AES, RSA, or Fernet) to view the original message.
+
+6. **Key Management**:
+
+   - The application allows you to save and load keys for AES, RSA, and Fernet. Ensure you keep your keys secure.
 
 ## Notes
 
